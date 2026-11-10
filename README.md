@@ -2,8 +2,8 @@
 # HashLoader Setup Toolkit
 ![Uploading hashloaderICON.png…]()
 
-A portable mod loader kit for games and applications running on **HashLink** (JIT mode), 
-Forge/Fabric style. Built as a single Rust executable with four core features:
+A portable mod loader kit for games and applications running on **HashLink** (JIT mode).
+Built as a single Rust executable with four core features:
 
 1. **Install HashLoader into a game** (primary feature): injects the loader, generates `HashLoader.exe`, 
    `hashloader.toml`, and creates the `hlmods/` directory in the game root (supports `main.hl`, any `*.hl` file, or Lime/HaxeFlixel `hlboot.dat`).
