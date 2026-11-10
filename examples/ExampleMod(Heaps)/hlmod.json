@@ -1,0 +1,11 @@
+{
+  "hlmod": 1,
+  "id": "heaps-examplemod",
+  "name": "ExampleMod(Heaps)",
+  "version": "1.0.0",
+  "author": "RedexDev",
+  "description": "Limites visibles para el jugador y titulo de ventana 'hash loader test!'.",
+  "priority": 100,
+  "main": "code/main.hl",
+  "requires": []
+}

@@ -1,0 +1,5 @@
+-cp ..\..\app\sdk
+-cp src
+-main ModMain
+-hl code/main.hl
+-dce no

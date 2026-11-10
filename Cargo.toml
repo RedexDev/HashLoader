@@ -1,0 +1,33 @@
+[package]
+name = "hashloader_toolkit"
+version = "0.1.0"
+edition = "2021"
+description = "HashLoader Setup Toolkit - Mod Loader para HashLink/JIT (Modding Runtime)"
+license = "MIT OR Apache-2.0"
+rust-version = "1.80"
+
+[[bin]]
+name = "HashToolkit"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.31"
+egui = "0.31"
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+winreg = "0.55"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+hlbc = { path = "crates/hlbc" }
+hlbc-decompiler = { path = "crates/hlbc-decompiler" }
+
+[build-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+winresource = "0.1"
+
+[profile.release]
+opt-level = 2
+lto = "thin"

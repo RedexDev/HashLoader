@@ -1,0 +1,9 @@
+# Compila el plugin de código del mod (HashLink JIT) usando el SDK de HashLoader.
+# Desde esta carpeta:
+#   haxe build.hxml
+-cp ..\..\app\sdk
+-cp src
+-main ModMain
+-hl code/main.hl
+-dce no
+

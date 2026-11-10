@@ -1,0 +1,11 @@
+{
+  "hlmod": 1,
+  "id": "flxbunnymark_mod",
+  "name": "FlxBunnyMark FX & Physics Mod",
+  "version": "1.0.0",
+  "author": "HashLoader SDK",
+  "description": "Mod de ejemplo para FlxBunnyMark (HaxeFlixel + hlboot.dat): efecto arcoíris, control de gravedad, vórtice con el ratón y HUD.",
+  "main": "code/main.hl",
+  "priority": 0
+}
+
