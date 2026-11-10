@@ -1,5 +1,6 @@
 [README.md](https://github.com/user-attachments/files/34617845/README.md)
 # HashLoader Setup Toolkit
+![Uploading hashloaderICON.png…]()
 
 A portable mod loader kit for games and applications running on **HashLink** (JIT mode), 
 Forge/Fabric style. Built as a single Rust executable with four core features:
