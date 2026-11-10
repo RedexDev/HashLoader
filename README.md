@@ -7,7 +7,7 @@ A portable mod loader kit for games and applications running on **HashLink** (JI
 Built as a single Rust executable with four core features:
 
 1. **Install HashLoader into a game** (primary feature): injects the loader, generates `HashLoader.exe`, 
-   `hashloader.toml`, and creates the `hlmods/` directory in the game root (supports `main.hl`, any `*.hl` file, or Lime/HaxeFlixel `hlboot.dat`).
+   `hashloader.toml`, and creates the `hlmods/` directory in the game root (supports `main.hl`, any `*.hl` file, or `hlboot.dat`).
 2. **Register `.hlmod` file extension on Windows** (optional): assigns a custom icon, File Explorer integration, and package details viewer on double-click.
 3. **Pack mod folder → `.hlmod`** (for mod developers).
 4. **Modding & Reverse Engineering Tools**: graphical decompiler and visual `.hl` bytecode inspector, plus automated Haxe stub generator (`.hx`).
