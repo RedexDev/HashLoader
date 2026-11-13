@@ -54,6 +54,9 @@ class LoaderPayload {
 	@:hlNative("?hashloader", "phase")
 	static function bridgePhase():Int return 0;
 
+	@:hlNative("?hashloader", "has_type")
+	static function bridgeHasType(name:hl.Bytes):Bool return false;
+
 	@:hlNative("?hashloader", "resolve")
 	static function bridgeResolve(name:hl.Bytes):Dynamic return null;
 
@@ -70,7 +73,7 @@ class LoaderPayload {
 	static function bridgeExcludedCaller():Bool return false;
 
 	// --- estado --------------------------------------------------------------
-	static var mods:Array<{id:String, bytes:hl.Bytes}> = [];
+	static var mods:Array<{id:String, path:String}> = [];
 	static var bridgeReady:Bool = false;
 	static var modsLoaded:Bool = false;
 	static var originalLoop:Dynamic = null;
@@ -86,6 +89,10 @@ class LoaderPayload {
 	static var ticked:Bool = false;
 	static var hooked:Bool = false;
 	static var errorCount:Int = 0;
+	static var heapsBootWaitFrames:Int = 0;
+	static var limeWaitFrames:Int = 0;
+	static var limeUnconfirmedPolls:Int = 0;
+	static var limeZeroListenerPolls:Int = 0;
 
 	static function main() {
 		var cfgPath = Sys.getEnv("HASHLOADER_CONFIG");
@@ -108,7 +115,7 @@ class LoaderPayload {
 						if (m != null && m.path != null && m.path != "" && FileSystem.exists(m.path)) {
 							mods.push({
 								id: m.id != null ? m.id : "mod",
-								bytes: @:privateAccess Sys.getPath(m.path)
+								path: m.path
 							});
 						}
 					}
@@ -122,11 +129,9 @@ class LoaderPayload {
 			mainHl = detectGameBytecode();
 		}
 
-		var mainHlBytes = @:privateAccess Sys.getPath(mainHl);
-
 		if (mods.length == 0) {
 			// Sin mods: arranque directo, sin puente ni envoltorio.
-			sys_load_plugin(mainHlBytes);
+			loadPluginPath(mainHl);
 			return;
 		}
 
@@ -144,7 +149,7 @@ class LoaderPayload {
 		};
 
 		startWatcher();
-		sys_load_plugin(mainHlBytes);
+		loadPluginPath(mainHl);
 	}
 
 	// --------------------------------------------------------------- observador
@@ -153,42 +158,56 @@ class LoaderPayload {
 			if (!initBridge()) return;
 
 			var attempts = 0;
+			var stablePolls = 0;
 			var installed = false;
-			while (attempts < 800) {
+			while (attempts < 1200) {
 				attempts++;
 				try {
-					if (systemClass == null && gsClass == null && limeAppClass == null && mainClass == null) {
+					if (systemClass == null && !limeHooked) {
 						systemClass = bridgeResolve(strBytes("hxd.System"));
-						if (systemClass == null) {
-							gsClass = bridgeResolve(strBytes("GameState"));
-							limeAppClass = bridgeResolve(strBytes("lime.app.Application"));
-							mainClass = bridgeResolve(strBytes("Main"));
-						}
 					}
+					if (systemClass == null) {
+						if (gsClass == null) gsClass = bridgeResolve(strBytes("GameState"));
+						if (limeAppClass == null) limeAppClass = bridgeResolve(strBytes("lime.app.Application"));
+						if (mainClass == null) mainClass = bridgeResolve(strBytes("Main"));
+					}
+
 					if (systemClass != null) {
 						var loop:Dynamic = bridgeGetLoop();
 						if (loop != null) {
 							if (!Reflect.compareMethods(loop, wrapper)) {
 								installWrapper(loop);
 								installed = true;
+								stablePolls = 0;
+							} else if (ticked && modsLoaded) {
+								stablePolls++;
+								if (stablePolls >= 40) return;
 							}
-							// hxd.App.setup() vuelve a llamar a setLoop(mainLoop)
-							// despues de init(): si ya hubo un frame, el
-							// envoltorio esta consolidado.
-							if (ticked) return;
 						}
 					} else {
 						if (!limeHooked) {
 							if (tryInstallLimeWrapper()) {
 								installed = true;
+								limeUnconfirmedPolls = 0;
+								stablePolls = 0;
 							}
+						} else if (!ticked) {
+							limeUnconfirmedPolls++;
+							// Si otro hilo reescribió onUpdate durante el arranque de Lime/Stage,
+							// reintentar el enganche tras ~0.5s.
+							if (limeUnconfirmedPolls >= 10) {
+								limeUnconfirmedPolls = 0;
+								tryInstallLimeWrapper();
+							}
+						} else if (modsLoaded) {
+							stablePolls++;
+							if (stablePolls >= 40) return;
 						}
-						if (limeHooked && ticked) return;
 					}
 				} catch (e:Dynamic) {
 					logError("observador", e);
 				}
-				Sys.sleep(0.05);
+				Sys.sleep((ticked && modsLoaded) ? 0.1 : 0.05);
 			}
 			if (!installed)
 				Sys.println("[HashLoader] AVISO: bucle principal (hxd.System / Lime onUpdate) no aparecio");
@@ -198,7 +217,7 @@ class LoaderPayload {
 	static function initBridge():Bool {
 		if (bridgeReady) return true;
 		var attempts = 0;
-		while (attempts < 400) {
+		while (attempts < 600) {
 			attempts++;
 			try {
 				var n = bridgeInit(hl.Type.get(LoaderPayload));
@@ -250,6 +269,35 @@ class LoaderPayload {
 		return Reflect.field(systemClass, "loopFunc");
 	}
 
+	static function arrayLen(arr:Dynamic):Int {
+		if (arr == null) return 0;
+		var v:Dynamic = Reflect.field(arr, "length");
+		return v != null ? (v : Int) : 0;
+	}
+
+	static function listenersContain(listeners:Dynamic, fn:Dynamic):Bool {
+		if (listeners == null || fn == null) return false;
+		try {
+			var len = arrayLen(listeners);
+			var raw:hl.NativeArray<Dynamic> = Reflect.field(listeners, "array");
+			if (raw != null) {
+				var limit = len < raw.length ? len : raw.length;
+				for (i in 0...limit) {
+					if (raw[i] != null && Reflect.compareMethods(raw[i], fn)) return true;
+				}
+				return false;
+			}
+			var getFn:Dynamic = Reflect.field(listeners, "__get");
+			if (getFn != null) {
+				for (i in 0...len) {
+					var item:Dynamic = Reflect.callMethod(listeners, getFn, [i]);
+					if (item != null && Reflect.compareMethods(item, fn)) return true;
+				}
+			}
+		} catch (_:Dynamic) {}
+		return false;
+	}
+
 	static function tryInstallLimeWrapper():Bool {
 		var app:Dynamic = null;
 
@@ -261,7 +309,7 @@ class LoaderPayload {
 			app = Reflect.field(win, "application");
 		}
 
-		// 2. Fallback general para juegos basados en Lime / OpenFL / Flixel:
+		// 2. Fallback general para juegos basados en Lime / OpenFL / Flixel / Peote-View:
 		//    lime.app.Application.current o Main.instance.
 		if (app == null && limeAppClass != null) {
 			app = Reflect.field(limeAppClass, "current");
@@ -270,18 +318,30 @@ class LoaderPayload {
 			app = Reflect.field(mainClass, "instance");
 		}
 		if (app == null) return false;
-		if (Reflect.field(app, "__window") == null && Reflect.field(app, "window") == null) return false;
+
+		var hasWin = Reflect.field(app, "__window") != null || Reflect.field(app, "window") != null;
+		if (!hasWin) {
+			hasWin = arrayLen(Reflect.field(app, "__windows")) > 0;
+		}
+		if (!hasWin) return false;
 
 		var onUpdate:Dynamic = Reflect.field(app, "onUpdate");
 		if (onUpdate == null) return false;
 
 		var listeners:Dynamic = Reflect.field(onUpdate, "__listeners");
-		if (listeners != null && listeners.length <= 0) return false;
+		if (listeners != null && arrayLen(listeners) <= 0) {
+			limeZeroListenerPolls++;
+			if (limeZeroListenerPolls < 20) return false;
+		}
 
 		try {
 			limeApp = app;
-			onUpdate.add(limePreWrapper, false, 100000);
-			onUpdate.add(limePostWrapper, false, -100000);
+			if (!listenersContain(listeners, limePreWrapper)) {
+				onUpdate.add(limePreWrapper, false, 100000);
+			}
+			if (!listenersContain(listeners, limePostWrapper)) {
+				onUpdate.add(limePostWrapper, false, -100000);
+			}
 			limeHooked = true;
 			if (!hooked) {
 				hooked = true;
@@ -295,12 +355,51 @@ class LoaderPayload {
 	}
 
 	// ------------------------------------------------------------------- frame
+	static function isHeapsReadyForMods():Bool {
+		heapsBootWaitFrames++;
+		if (heapsBootWaitFrames >= 30) return true;
+		if (!bridgeHasType(strBytes("hxd.App"))) return true;
+		var ctx:Dynamic = originalLoop != null ? hl.Api.getClosureValue(originalLoop) : null;
+		if (ctx == null) return false;
+		if (Reflect.field(ctx, "s2d") == null && Reflect.field(ctx, "s3d") == null) return false;
+		return true;
+	}
+
+	static function isLimeReadyForMods():Bool {
+		limeWaitFrames++;
+		if (limeWaitFrames > 240) return true;
+
+		if (limeApp != null) {
+			var pre:Dynamic = Reflect.field(limeApp, "__preloader");
+			if (pre == null) pre = Reflect.field(limeApp, "preloader");
+			if (pre != null && Reflect.field(pre, "complete") == false) return false;
+		}
+
+		if (bridgeHasType(strBytes("flixel.FlxG"))) {
+			var flxG:Dynamic = bridgeResolve(strBytes("flixel.FlxG"));
+			if (flxG == null) return false;
+			var flxGame:Dynamic = Reflect.field(flxG, "game");
+			if (flxGame == null) return false;
+			if (limeWaitFrames < 180) {
+				var state:Dynamic = Reflect.field(flxGame, "_state");
+				if (state == null) {
+					var getState:Dynamic = Reflect.field(flxGame, "get_state");
+					if (getState != null) {
+						try {
+							state = Reflect.callMethod(flxGame, getState, []);
+						} catch (_:Dynamic) {}
+					}
+				}
+				if (state == null) return false;
+			}
+		}
+
+		return true;
+	}
+
 	static function limePreTick() {
 		ticked = true;
-		if (!modsLoaded) {
-			modsLoaded = true;
-			onFirstFrame();
-		}
+		if (!modsLoaded) return;
 
 		try {
 			bridgePreTick();
@@ -310,6 +409,20 @@ class LoaderPayload {
 	}
 
 	static function limePostTick() {
+		ticked = true;
+		if (!modsLoaded) {
+			if (isLimeReadyForMods()) {
+				modsLoaded = true;
+				onFirstFrame();
+				try {
+					bridgeFrameTick();
+				} catch (e:Dynamic) {
+					logError("frame_tick", e);
+				}
+			}
+			return;
+		}
+
 		try {
 			bridgeFrameTick();
 		} catch (e:Dynamic) {
@@ -320,8 +433,29 @@ class LoaderPayload {
 	static function tick() {
 		ticked = true;
 		if (!modsLoaded) {
-			modsLoaded = true;
-			onFirstFrame();
+			try {
+				if (originalLoop != null) {
+					Reflect.callMethod(null, originalLoop, []);
+				}
+			} catch (e:Dynamic) {
+				logError("bucle original", e);
+			}
+
+			var curLoop:Dynamic = bridgeGetLoop();
+			if (curLoop != null && !Reflect.compareMethods(curLoop, wrapper)) {
+				installWrapper(curLoop);
+			}
+
+			if (isHeapsReadyForMods()) {
+				modsLoaded = true;
+				onFirstFrame();
+				try {
+					bridgeFrameTick();
+				} catch (e:Dynamic) {
+					logError("frame_tick", e);
+				}
+			}
+			return;
 		}
 
 		try {
@@ -336,6 +470,11 @@ class LoaderPayload {
 			}
 		} catch (e:Dynamic) {
 			logError("bucle original", e);
+		}
+
+		var postLoop:Dynamic = bridgeGetLoop();
+		if (postLoop != null && !Reflect.compareMethods(postLoop, wrapper)) {
+			installWrapper(postLoop);
 		}
 
 		try {
@@ -353,6 +492,12 @@ class LoaderPayload {
 			if (ctx == null && originalLoop != null) {
 				ctx = hl.Api.getClosureValue(originalLoop);
 			}
+			if (ctx == null && mainClass != null) {
+				ctx = Reflect.field(mainClass, "instance");
+			}
+			if (ctx == null && limeAppClass != null) {
+				ctx = Reflect.field(limeAppClass, "current");
+			}
 			if (ctx != null) {
 				bridgeSetContext(ctx);
 			}
@@ -366,7 +511,7 @@ class LoaderPayload {
 		mods = [];
 		for (mp in pending) {
 			try {
-				var ok = sys_load_plugin(mp.bytes);
+				var ok = loadPluginPath(mp.path);
 				if (ok) loaded++;
 				Sys.println("[HashLoader] mod '" + mp.id + "': " + (ok ? "cargado" : "fallo"));
 			} catch (e:Dynamic) {
@@ -404,6 +549,15 @@ class LoaderPayload {
 		if (errorCount++ < 16) {
 			Sys.println("[HashLoader] error en " + where + ": " + Std.string(e));
 		}
+	}
+
+	static function loadPluginPath(path:String):Bool {
+		// hl_sys_load_plugin espera uchar* (UTF-16 s.bytes) tanto en Windows como en Linux (HL 1.16).
+		if (sys_load_plugin(strBytes(path))) return true;
+		if (Sys.systemName() != "Windows") {
+			return sys_load_plugin(@:privateAccess Sys.getPath(path));
+		}
+		return false;
 	}
 
 	static inline function strBytes(s:String):hl.Bytes {

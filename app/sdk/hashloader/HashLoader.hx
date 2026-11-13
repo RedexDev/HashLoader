@@ -116,7 +116,7 @@ class HashLoader {
 			var cls:Dynamic = nativeResolve(bytesOf(className));
 			if (cls != null) {
 				_classCache.set(className, cls);
-			} else if (typeCount() > 0) {
+			} else if (typeCount() > 0 && !classExists(className)) {
 				_missingCache.set(className, true);
 			}
 			return cls;

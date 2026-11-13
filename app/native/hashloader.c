@@ -17,13 +17,25 @@
  * init() is excluded, so a mod never resolves itself by mistake.
  */
 
+#ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <tlhelp32.h>
+#else
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define HL_NAME(x) hashloader_##x
@@ -125,11 +137,144 @@ static int g_ok_next = 0;
 static uintptr_t g_last_bad_base = 0;
 static uintptr_t g_last_bad_end = 0;
 
+#ifndef _WIN32
+typedef struct {
+	uintptr_t base;
+	uintptr_t end;
+	int rw_priv;
+} linux_map_region;
+
+static linux_map_region *g_maps = NULL;
+static int g_maps_count = 0;
+static int g_maps_cap = 0;
+static int g_maps_valid = 0;
+static uintptr_t g_maps_max_end = 0;
+static int g_self_mem_fd = -1;
+
+static int is_skippable_mapping_path(const char *path) {
+	if (!path || !*path) return 0;
+	if (strcmp(path, "[vvar]") == 0 ||
+		strcmp(path, "[vvar_vclock]") == 0 ||
+		strcmp(path, "[vsyscall]") == 0 ||
+		strcmp(path, "[vdso]") == 0)
+		return 1;
+	if (strncmp(path, "/dev/", 5) == 0) return 1;
+	return 0;
+}
+
+static void linux_refresh_maps(void) {
+	FILE *fp;
+	char line[512];
+
+	g_maps_count = 0;
+	g_maps_max_end = 0;
+	g_maps_valid = 1;
+	fp = fopen("/proc/self/maps", "r");
+	if (!fp) return;
+
+	while (fgets(line, sizeof(line), fp)) {
+		unsigned long long s = 0, e = 0;
+		char perms[8] = {0};
+		int n = 0;
+		char *p;
+		const char *path = "";
+		int tok;
+
+		if (sscanf(line, "%llx-%llx %7s %n", &s, &e, perms, &n) != 3)
+			continue;
+		if (perms[0] != 'r') continue;
+		if (e <= s) continue;
+
+		/* Saltar offset, dev e inode hasta llegar al pathname opcional */
+		p = line + n;
+		for (tok = 0; tok < 3; tok++) {
+			while (*p == ' ' || *p == '\t') p++;
+			while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
+		}
+		while (*p == ' ' || *p == '\t') p++;
+		if (*p && *p != '\n') {
+			size_t len = strlen(p);
+			while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r'))
+				p[--len] = '\0';
+			path = p;
+		}
+		if (is_skippable_mapping_path(path)) continue;
+
+		if (g_maps_count == g_maps_cap) {
+			int ncap = g_maps_cap ? g_maps_cap * 2 : 128;
+			linux_map_region *nr = (linux_map_region *)realloc(
+				g_maps, (size_t)ncap * sizeof(linux_map_region));
+			if (!nr) break;
+			g_maps = nr;
+			g_maps_cap = ncap;
+		}
+		g_maps[g_maps_count].base = (uintptr_t)s;
+		g_maps[g_maps_count].end = (uintptr_t)e;
+		g_maps[g_maps_count].rw_priv = (perms[1] == 'w' && perms[3] == 'p') ? 1 : 0;
+		if ((uintptr_t)e > g_maps_max_end) g_maps_max_end = (uintptr_t)e;
+		g_maps_count++;
+	}
+	fclose(fp);
+}
+
+static void linux_ensure_maps(void) {
+	if (!g_maps_valid)
+		linux_refresh_maps();
+}
+
+static int linux_find_region(uintptr_t addr, uintptr_t *out_base, uintptr_t *out_end) {
+	int lo, hi;
+	linux_ensure_maps();
+	lo = 0;
+	hi = g_maps_count - 1;
+	while (lo <= hi) {
+		int mid = lo + (hi - lo) / 2;
+		if (addr < g_maps[mid].base) {
+			hi = mid - 1;
+		} else if (addr >= g_maps[mid].end) {
+			lo = mid + 1;
+		} else {
+			if (out_base) *out_base = g_maps[mid].base;
+			if (out_end) *out_end = g_maps[mid].end;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static int safe_read_bytes(uintptr_t addr, void *dst, size_t len) {
+	pid_t pid = getpid();
+	struct iovec local_iov;
+	struct iovec remote_iov;
+	ssize_t n;
+
+	if (!addr || !dst || len == 0) return 0;
+	local_iov.iov_base = dst;
+	local_iov.iov_len = len;
+	remote_iov.iov_base = (void *)addr;
+	remote_iov.iov_len = len;
+
+	n = process_vm_readv(pid, &local_iov, 1, &remote_iov, 1, 0);
+	if (n == (ssize_t)len) return 1;
+	if (n >= 0 || (errno != ENOSYS && errno != EPERM)) return 0;
+
+	if (g_self_mem_fd < 0)
+		g_self_mem_fd = open("/proc/self/mem", O_RDONLY);
+	if (g_self_mem_fd < 0) return 0;
+	if (addr > (uintptr_t)0x7fffffffffffffffULL) return 0;
+	n = pread(g_self_mem_fd, dst, len, (off_t)addr);
+	return n == (ssize_t)len;
+}
+#endif
+
 static void mem_cache_reset(void) {
 	g_ok_count = 0;
 	g_ok_next = 0;
 	g_last_bad_base = 0;
 	g_last_bad_end = 0;
+#ifndef _WIN32
+	g_maps_valid = 0;
+#endif
 }
 
 /* Comprobacion autoritativa de que un rango es legible. Cacheamos las ultimas
@@ -149,8 +294,9 @@ static int mem_readable(const void *p, size_t len) {
 	}
 	if (a >= g_last_bad_base && end <= g_last_bad_end) return 0;
 	while (a < end) {
+		uintptr_t rb = 0, re = 0;
+#ifdef _WIN32
 		MEMORY_BASIC_INFORMATION mbi;
-		uintptr_t rb, re;
 		if (VirtualQuery((LPCVOID)a, &mbi, sizeof(mbi)) != sizeof(mbi))
 			return 0;
 		rb = (uintptr_t)mbi.BaseAddress;
@@ -162,6 +308,10 @@ static int mem_readable(const void *p, size_t len) {
 			}
 			return 0;
 		}
+#else
+		if (!linux_find_region(a, &rb, &re))
+			return 0;
+#endif
 		if (re <= a) return 0;
 		g_ok_cache[g_ok_next].base = rb;
 		g_ok_cache[g_ok_next].end = re;
@@ -234,14 +384,26 @@ static const uchar *type_name_fast(hl_type *t) {
 }
 
 static int code_looks_valid(hl_code *c) {
+	int check_n;
+	int i;
 	if (!c) return 0;
 	if (!mem_readable(c, sizeof(hl_code))) return 0;
 	if (c->version < 2 || c->version > 6) return 0;
+	if (c->nints < 0 || c->nfloats < 0 || c->nstrings < 0 || c->nbytes < 0) return 0;
+	if (c->nnatives < 0 || c->nnatives > 5000000 || c->nconstants < 0) return 0;
 	if (c->ntypes <= 0 || c->ntypes > 500000) return 0;
-	if (c->nfunctions < 0 || c->nfunctions > 5000000) return 0;
+	if (c->nfunctions <= 0 || c->nfunctions > 5000000) return 0;
 	if (c->nglobals < 0 || c->nglobals > 5000000) return 0;
-	if (!c->types) return 0;
+	if (c->entrypoint < 0 || c->entrypoint >= (c->nfunctions + c->nnatives)) return 0;
+	if (!c->types || !c->functions) return 0;
+	if (c->nstrings > 0 && (!c->strings || !mem_readable(c->strings, sizeof(char *)))) return 0;
 	if (!mem_readable(c->types, (size_t)c->ntypes * sizeof(hl_type))) return 0;
+	if (!mem_readable(c->functions, sizeof(void *))) return 0;
+	check_n = c->ntypes < 16 ? c->ntypes : 16;
+	for (i = 0; i < check_n; i++) {
+		unsigned int k = (unsigned int)c->types[i].kind;
+		if (k >= (unsigned int)HLAST) return 0;
+	}
 	return 1;
 }
 
@@ -296,6 +458,36 @@ static hl_code *caller_code_from_type(hl_type *t) {
 	return m->code;
 }
 
+static void consider_candidate(
+	hl_code *c,
+	hl_code **best,
+	int *best_score,
+	int *best_types
+) {
+	int score;
+	g_phase = PH_SCAN_LOOK;
+	if (!code_looks_valid(c)) return;
+	g_phase = PH_SCAN_SCORE;
+	score = code_score(c);
+	/* Solo aceptamos modulos que contengan clases conocidas del
+	 * juego. Cualquier bloque de heap puede parecerse a un
+	 * hl_code, y un falso positivo cacheado impediria encontrar
+	 * el modulo real mas tarde. */
+	if (score > 0) {
+		g_phase = PH_SCAN_ACCEPT;
+		if (score > *best_score || (score == *best_score && c->ntypes > *best_types)) {
+			*best = c;
+			*best_score = score;
+			*best_types = c->ntypes;
+		}
+	}
+	if (score >= 0 && c->ntypes >= 16 && c->ntypes > g_fallback_types) {
+		g_fallback_code = c;
+		g_fallback_types = c->ntypes;
+	}
+}
+
+#ifdef _WIN32
 static int is_private_writable(DWORD type, DWORD protect) {
 	DWORD p = protect & 0xff;
 	if (type != MEM_PRIVATE) return 0;
@@ -408,7 +600,6 @@ static hl_code *scan_for_game_code(hl_code *exclude) {
 			for (; p + sizeof(uintptr_t) <= end; p += sizeof(uintptr_t)) {
 				uintptr_t v;
 				hl_code *c;
-				int score = 0;
 				v = *(volatile uintptr_t *)p;
 				if (v < minaddr || v >= maxaddr) continue;
 				if (v & 7) continue;
@@ -417,29 +608,7 @@ static hl_code *scan_for_game_code(hl_code *exclude) {
 				if (c == exclude) continue;
 				if (c == g_game_code) continue;
 				if (c == best || c == g_fallback_code) continue;
-				g_phase = PH_SCAN_LOOK;
-				if (!code_looks_valid(c)) continue;
-				g_phase = PH_SCAN_SCORE;
-				score = code_score(c);
-				/* Solo aceptamos modulos que contengan clases conocidas del
-				 * juego. Cualquier bloque de heap puede parecerse a un
-				 * hl_code, y un falso positivo cacheado impediria encontrar
-				 * el modulo real mas tarde. */
-				if (score > 0) {
-					g_phase = PH_SCAN_ACCEPT;
-					if (score > best_score) {
-						best = c;
-						best_score = score;
-						best_types = c->ntypes;
-					} else if (score == best_score && c->ntypes > best_types) {
-						best = c;
-						best_types = c->ntypes;
-					}
-				}
-				if (c->ntypes > g_fallback_types) {
-					g_fallback_code = c;
-					g_fallback_types = c->ntypes;
-				}
+				consider_candidate(c, &best, &best_score, &best_types);
 			}
 		}
 		if (end <= addr) break;
@@ -448,6 +617,85 @@ static hl_code *scan_for_game_code(hl_code *exclude) {
 	g_phase = PH_SCAN_DONE;
 	return best;
 }
+#else
+static void evaluate_candidate_ptr(
+	uintptr_t v,
+	hl_code *exclude,
+	hl_code **best,
+	int *best_score,
+	int *best_types
+) {
+	hl_code probe_c;
+	hl_code *c;
+
+	if (v < (uintptr_t)0x10000 || v >= g_maps_max_end) return;
+	if (v & (sizeof(uintptr_t) - 1)) return;
+	c = (hl_code *)v;
+	if (c == exclude || c == g_game_code || c == *best || c == g_fallback_code) return;
+	if (!mem_readable(c, sizeof(hl_code))) return;
+	if (!safe_read_bytes(v, &probe_c, sizeof(hl_code))) return;
+	if (probe_c.version < 2 || probe_c.version > 6) return;
+	if (probe_c.ntypes <= 0 || probe_c.ntypes > 500000) return;
+	if (probe_c.nnatives < 0 || probe_c.nnatives > 5000000) return;
+	if (probe_c.nfunctions <= 0 || probe_c.nfunctions > 5000000) return;
+	if (probe_c.nglobals < 0 || probe_c.nglobals > 5000000) return;
+	if (probe_c.entrypoint < 0 || probe_c.entrypoint >= (probe_c.nfunctions + probe_c.nnatives)) return;
+	if (!probe_c.types || !probe_c.functions) return;
+	if (!mem_readable(probe_c.types, (size_t)probe_c.ntypes * sizeof(hl_type))) return;
+
+	consider_candidate(c, best, best_score, best_types);
+}
+
+static hl_code *scan_for_game_code(hl_code *exclude) {
+	enum { CHUNK_SIZE = 65536, PAGE_STEP = 4096 };
+	static unsigned char buf[CHUNK_SIZE];
+	hl_code *best = NULL;
+	int best_score = -1000000;
+	int best_types = -1;
+	int ri;
+
+	g_fallback_code = NULL;
+	g_fallback_types = -1;
+
+	linux_ensure_maps();
+	g_phase = PH_SCAN;
+
+	for (ri = 0; ri < g_maps_count; ri++) {
+		uintptr_t addr, end;
+		if (!g_maps[ri].rw_priv) continue;
+		addr = (g_maps[ri].base + (sizeof(uintptr_t) - 1)) & ~(uintptr_t)(sizeof(uintptr_t) - 1);
+		end = g_maps[ri].end;
+
+		while (addr + sizeof(uintptr_t) <= end) {
+			size_t avail = (size_t)(end - addr);
+			size_t chunk = avail > CHUNK_SIZE ? CHUNK_SIZE : avail;
+			size_t off;
+			/* Evita cruzar limites de nuestro propio buffer o regiones dinamicas */
+			if (safe_read_bytes(addr, buf, chunk)) {
+				for (off = 0; off + sizeof(uintptr_t) <= chunk; off += sizeof(uintptr_t)) {
+					uintptr_t v;
+					memcpy(&v, buf + off, sizeof(uintptr_t));
+					evaluate_candidate_ptr(v, exclude, &best, &best_score, &best_types);
+				}
+				addr += chunk;
+			} else {
+				/* Si falla una pagina dentro del bloque, probamos pagina a pagina sin abortar */
+				size_t sub = chunk > PAGE_STEP ? PAGE_STEP : chunk;
+				if (safe_read_bytes(addr, buf, sub)) {
+					for (off = 0; off + sizeof(uintptr_t) <= sub; off += sizeof(uintptr_t)) {
+						uintptr_t v;
+						memcpy(&v, buf + off, sizeof(uintptr_t));
+						evaluate_candidate_ptr(v, exclude, &best, &best_score, &best_types);
+					}
+				}
+				addr += sub;
+			}
+		}
+	}
+	g_phase = PH_SCAN_DONE;
+	return best;
+}
+#endif
 
 static int type_by_name(const uchar *want, hl_type **out) {
 	hl_code *c = g_game_code;
@@ -502,8 +750,10 @@ HL_PRIM int HL_NAME(phase)(void) {
 
 HL_PRIM int HL_NAME(init)(hl_type *caller) {
 	hl_code *found;
+#ifdef _WIN32
 	HANDLE *handles = NULL;
 	int nhandles;
+#endif
 
 	mem_cache_reset();
 	g_phase = PH_ENTER;
@@ -517,15 +767,21 @@ HL_PRIM int HL_NAME(init)(hl_type *caller) {
 	g_caller_code = caller_code_from_type(caller);
 
 	g_phase = PH_SUSPEND;
+#ifdef _WIN32
 	nhandles = suspend_other_threads(&handles);
 	mem_cache_reset();
 	found = scan_for_game_code(g_caller_code);
 	g_phase = PH_RESUME;
 	resume_other_threads(handles, nhandles);
+#else
+	mem_cache_reset();
+	found = scan_for_game_code(g_caller_code);
+	g_phase = PH_RESUME;
+#endif
 	/* Si aun no hay un modulo con clases reconocibles, seguimos esperando:
 	 * el juego puede estar cargandose. Tras unos segundos aceptamos el
 	 * modulo mas grande como ultimo recurso (juegos no basados en Heaps). */
-	if (!found && g_init_calls > 120)
+	if (!found && g_caller_code != NULL && g_init_calls > 240)
 		found = g_fallback_code;
 	if (!found) {
 		g_phase = PH_NONE;
