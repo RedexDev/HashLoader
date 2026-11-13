@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/HashLoader.png" alt="HashLoader" width="228" height="228">
+  <img src="app/HashLoader.png" alt="HashLoader" width="330" height="330">
 </p>
 
 # HashLoader
