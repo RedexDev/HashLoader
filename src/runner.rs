@@ -121,10 +121,20 @@ fn find_runtime(root: &Path, bin: &Path, runtime: &RuntimeSection) -> Result<Pat
             candidates.push(resolve(root, h));
         }
     }
-    candidates.push(bin.join("hashlink.exe"));
-    candidates.push(root.join("hashlink.exe"));
-    candidates.push(bin.join("hl.exe"));
-    candidates.push(root.join("hl.exe"));
+    #[cfg(windows)]
+    {
+        candidates.push(bin.join("hashlink.exe"));
+        candidates.push(root.join("hashlink.exe"));
+        candidates.push(bin.join("hl.exe"));
+        candidates.push(root.join("hl.exe"));
+    }
+    #[cfg(not(windows))]
+    {
+        candidates.push(bin.join("hashlink"));
+        candidates.push(root.join("hashlink"));
+        candidates.push(bin.join("hl"));
+        candidates.push(root.join("hl"));
+    }
     if let Some(hl) = candidates.iter().find(|c| c.is_file()) {
         return Ok(hl.clone());
     }
@@ -133,14 +143,32 @@ fn find_runtime(root: &Path, bin: &Path, runtime: &RuntimeSection) -> Result<Pat
     {
         return Ok(companion);
     }
+    #[cfg(not(windows))]
+    {
+        for sys_hl in ["/usr/local/bin/hl", "/usr/bin/hl"] {
+            let p = PathBuf::from(sys_hl);
+            if p.is_file() {
+                return Ok(p);
+            }
+        }
+        if let Ok(path_env) = std::env::var("PATH") {
+            for dir in std::env::split_paths(&path_env) {
+                let p = dir.join("hl");
+                if p.is_file() {
+                    return Ok(p);
+                }
+            }
+        }
+    }
     let searched = candidates
         .iter()
         .map(|c| format!(" {}", c.display()))
         .collect::<Vec<_>>()
         .join("\n");
     Err(format!(
-        "No se encontró el host JIT 'hashlink.exe'. Búsquedas:\n{searched}\n\n\
-         Ajusta [runtime] hashlink = \"...\" en hashloader.toml"
+        "No se encontró el host JIT '{}'. Búsquedas:\n{searched}\n\n\
+         Ajusta [runtime] hashlink = \"...\" en hashloader.toml",
+        crate::util::HOST_EXE_NAME
     ))
 }
 
@@ -412,12 +440,24 @@ fn try_run(root: &Path, cfg: &Config) -> Result<i32, String> {
     Ok(code)
 }
 
+fn write_if_changed(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Ok(existing) = fs::read(target) {
+        if existing.as_slice() == bytes {
+            return Ok(());
+        }
+    }
+    fs::write(target, bytes)
+}
+
 fn write_embedded_bridge(cache: &Path, log: &mut String) {
     #[cfg(has_bridge)]
     {
         let target = cache.join("hashloader.hdll");
-        match fs::write(&target, crate::HASHLOADER_HDLL) {
-            Ok(()) => log.push_str(&format!("bridge : {}\n", target.display())),
+        match write_if_changed(&target, crate::HASHLOADER_HDLL) {
+            Ok(()) => {
+                crate::util::mark_executable(&target);
+                log.push_str(&format!("bridge : {}\n", target.display()));
+            }
             Err(e) => log.push_str(&format!("aviso  : no se pudo escribir hashloader.hdll ({e})\n")),
         }
     }
@@ -431,7 +471,7 @@ fn write_embedded_payload(cache: &Path, log: &mut String) -> Option<PathBuf> {
     #[cfg(has_payload)]
     {
         let target = cache.join("HashLoader.hl");
-        if fs::write(&target, crate::PAYLOAD_HL).is_ok() {
+        if write_if_changed(&target, crate::PAYLOAD_HL).is_ok() {
             log.push_str("\npayload embebido del Modding Runtime -> ok\n");
             return Some(target);
         }
@@ -560,15 +600,40 @@ fn same_bytes(a: &Path, b: &Path) -> Result<bool, String> {
 }
 
 fn add_path(cmd: &mut Command, dirs: &[PathBuf]) {
-    let extra = dirs
-        .iter()
-        .map(|d| d.display().to_string())
-        .collect::<Vec<_>>()
-        .join(";");
-    match std::env::var("PATH") {
-        Ok(p) => cmd.env("PATH", format!("{p};{extra}")),
-        Err(_) => cmd.env("PATH", extra),
-    };
+    // PATH (Windows y Unix, usando el separador nativo mediante std::env::join_paths)
+    let mut path_list: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    for d in dirs {
+        if !path_list.contains(d) {
+            path_list.push(d.clone());
+        }
+    }
+    if let Ok(joined) = std::env::join_paths(&path_list) {
+        cmd.env("PATH", joined);
+    }
+
+    // En Unix/Linux, HashLink resuelve libhl.so y los *.hdll mediante dlopen() / LD_LIBRARY_PATH.
+    // Colocamos primero las rutas locales (.hashloader, bin, etc.) para priorizar el puente y libhl local.
+    #[cfg(unix)]
+    {
+        let mut ld_list: Vec<PathBuf> = Vec::new();
+        for d in dirs {
+            if !ld_list.contains(d) {
+                ld_list.push(d.clone());
+            }
+        }
+        if let Some(cur) = std::env::var_os("LD_LIBRARY_PATH") {
+            for d in std::env::split_paths(&cur) {
+                if !ld_list.contains(&d) {
+                    ld_list.push(d);
+                }
+            }
+        }
+        if let Ok(joined) = std::env::join_paths(&ld_list) {
+            cmd.env("LD_LIBRARY_PATH", joined);
+        }
+    }
 }
 
 /// Redirige stdout/stderr del hijo hacia archivos de log sin bloquearse.

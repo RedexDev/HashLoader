@@ -12,14 +12,7 @@ pub enum ToolsStatus {
 }
 
 pub fn tools_dir() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::env::var("USERPROFILE")
-                .map(|p| PathBuf::from(p).join("AppData").join("Local"))
-                .unwrap_or_else(|_| std::env::temp_dir())
-        });
-    base.join("HashLoader").join("tools")
+    crate::util::app_data_dir().join("tools")
 }
 
 pub fn is_installed() -> bool {

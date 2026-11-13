@@ -80,7 +80,7 @@ impl DecompilerState {
                                 match crate::stubs::generate_all_stubs(src, &out) {
                                     Ok(rep) => {
                                         self.status_msg = Some(t.stubs_exported_msg.replace("{}", &rep.files_written.to_string()) + &format!(" ({})", rep.out_dir.display()));
-                                        let _ = std::process::Command::new("explorer").arg(&rep.out_dir).spawn();
+                                        crate::util::open_folder(&rep.out_dir);
                                     }
                                     Err(e) => self.status_msg = Some(format!("Error: {e}")),
                                 }

@@ -90,7 +90,7 @@ pub const EN_TEXTS: Texts = Texts {
     app_subtitle: "HashLink/JIT Modding Runtime",
 
     card_install_title: "1 · Install HashLoader (main)",
-    card_install_desc: "Applies the loader to any HashLink game/program in base JIT mode (any *.hl or hlboot.dat file, regardless of name). Creates HashLoader.exe + hashloader.toml + hlmods/ in the root.",
+    card_install_desc: "Applies the loader to any HashLink game/program in base JIT mode (any *.hl or hlboot.dat file, regardless of name). Creates HashLoader.exe + hashloader.toml + hlmods/ inside the build folder.",
     btn_install_folder: "Install HashLoader in game folder…",
     btn_select_hl_file: "Select .hl / hlboot.dat file directly…",
     select_hl_dialog_title: "Select HashLink bytecode (*.hl / hlboot.dat)",
@@ -156,7 +156,7 @@ pub const ES_TEXTS: Texts = Texts {
     app_subtitle: "Modding Runtime para HashLink/JIT",
 
     card_install_title: "1 · Instalar HashLoader (principal)",
-    card_install_desc: "Aplica el loader a cualquier juego/programa HashLink en modo JIT base (cualquier archivo *.hl o hlboot.dat, sin importar su nombre). Crea HashLoader.exe + hashloader.toml + hlmods/ en la raíz.",
+    card_install_desc: "Aplica el loader a cualquier juego/programa HashLink en modo JIT base (cualquier archivo *.hl o hlboot.dat, sin importar su nombre). Crea HashLoader.exe + hashloader.toml + hlmods/ dentro de la carpeta de la build.",
     btn_install_folder: "Instalar HashLoader en carpeta del juego…",
     btn_select_hl_file: "Seleccionar archivo .hl / hlboot.dat directamente…",
     select_hl_dialog_title: "Seleccionar bytecode HashLink (*.hl / hlboot.dat)",
@@ -222,7 +222,7 @@ pub const RU_TEXTS: Texts = Texts {
     app_subtitle: "Среда моддинга для HashLink/JIT",
 
     card_install_title: "1 · Установить HashLoader (основное)",
-    card_install_desc: "Внедряет загрузчик в любую игру или программу на HashLink в режиме JIT (любой файл *.hl или hlboot.dat независимо от имени). Создаёт HashLoader.exe + hashloader.toml + hlmods/ в корне.",
+    card_install_desc: "Внедряет загрузчик в любую игру или программу на HashLink в режиме JIT (любой файл *.hl или hlboot.dat независимо от имени). Создаёт HashLoader.exe + hashloader.toml + hlmods/ внутри папки сборки.",
     btn_install_folder: "Установить HashLoader в папку игры…",
     btn_select_hl_file: "Выбрать файл .hl / hlboot.dat напрямую…",
     select_hl_dialog_title: "Выбрать байт-код HashLink (*.hl / hlboot.dat)",
@@ -288,7 +288,7 @@ pub const PT_TEXTS: Texts = Texts {
     app_subtitle: "Ambiente de Modding para HashLink/JIT",
 
     card_install_title: "1 · Instalar HashLoader (principal)",
-    card_install_desc: "Aplica o loader a qualquer jogo/programa HashLink em modo JIT base (qualquer arquivo *.hl ou hlboot.dat, independentemente do nome). Cria HashLoader.exe + hashloader.toml + hlmods/ na raiz.",
+    card_install_desc: "Aplica o loader a qualquer jogo/programa HashLink em modo JIT base (qualquer arquivo *.hl ou hlboot.dat, independentemente do nome). Cria HashLoader.exe + hashloader.toml + hlmods/ dentro da pasta da build.",
     btn_install_folder: "Instalar HashLoader na pasta do jogo…",
     btn_select_hl_file: "Selecionar arquivo .hl / hlboot.dat diretamente…",
     select_hl_dialog_title: "Selecionar bytecode HashLink (*.hl / hlboot.dat)",
@@ -316,7 +316,7 @@ pub const PT_TEXTS: Texts = Texts {
     tools_available_heading: "Ferramentas disponíveis com interface gráfica:",
     btn_open_decompiler: "🔍 Abrir Descompilador / Inspetor HL",
     btn_gen_stubs: "⚡ Gerar Stubs Haxe (.hx)…",
-    btn_open_tools_dir: "📁 Abrir carpeta de herramientas (disco)",
+    btn_open_tools_dir: "📁 Abrir pasta de ferramentas (disco)",
     btn_uninstall_tools: "🗑️ Desinstalar ferramentas de Modding & RE",
 
     log_header: "Registro",

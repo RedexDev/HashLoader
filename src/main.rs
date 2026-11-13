@@ -19,12 +19,17 @@ mod util;
 #[cfg(has_payload)]
 pub const PAYLOAD_HL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/payload.hl"));
 
-/// Runtime JIT embebido (hashlink.exe + libhl.dll) — se incluye si existe
-/// app/hlvm/ al compilar (build.rs emite el cfg `has_runtime`).
-#[cfg(has_runtime)]
+/// Runtime JIT embebido (hashlink.exe + libhl.dll en Windows; hashlink + libhl.so
+/// en Unix) — se incluye si existe en el build (build.rs emite el cfg `has_runtime`).
+#[cfg(all(has_runtime, windows))]
 pub const EMBED_HASHLINK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hashlink.exe"));
-#[cfg(has_runtime)]
+#[cfg(all(has_runtime, windows))]
 pub const EMBED_LIBHL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libhl.dll"));
+
+#[cfg(all(has_runtime, not(windows)))]
+pub const EMBED_HASHLINK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hashlink"));
+#[cfg(all(has_runtime, not(windows)))]
+pub const EMBED_LIBHL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libhl.so"));
 
 /// Puente nativo de runtime de los mods (hashloader.hdll) — se incluye si
 /// existe app/native/hashloader.hdll al compilar (cfg `has_bridge`).
@@ -163,10 +168,7 @@ fn run_dir_packer(dir: &std::path::Path) -> i32 {
                     plugin
                 ),
             );
-            let _ = std::process::Command::new("explorer").arg(format!(
-                "/select,\"{}\"",
-                out.display()
-            )).spawn();
+            crate::util::reveal_file(&out);
             0
         }
         Err(e) => {

@@ -153,13 +153,13 @@ impl InspectorApp {
             if self.instance.is_some() {
                 if let Some(p) = &self.log_state.as_ref().and_then(|s| s.path.clone()) {
                     if ui.button("Ver run.log completo").clicked() {
-                        let _ = std::process::Command::new("notepad").arg(p).spawn();
+                        crate::util::open_text_file(p);
                     }
                 }
                 if let Some(root) = &self.instance.clone() {
                     let hlmods = root.join("hlmods");
                     if ui.button("Abrir hlmods").clicked() {
-                        let _ = std::process::Command::new("explorer").arg(&hlmods).spawn();
+                        crate::util::open_folder(&hlmods);
                     }
                 }
             }
@@ -417,7 +417,10 @@ fn find_instance(pkg: &Path) -> Option<PathBuf> {
             .unwrap_or(false)
         {
             if let Some(root) = anc.parent() {
-                if root.join("hashloader.toml").is_file() || root.join("HashLoader.exe").is_file()
+                if root.join("hashloader.toml").is_file()
+                    || root.join(crate::util::LOADER_EXE_NAME).is_file()
+                    || root.join("HashLoader.exe").is_file()
+                    || root.join("HashLoader").is_file()
                 {
                     return Some(root.to_path_buf());
                 }

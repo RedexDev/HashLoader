@@ -1,4 +1,3 @@
-use std::process;
 use std::sync::{Arc, Mutex};
 
 use egui::{Color32, RichText};
@@ -232,13 +231,13 @@ impl ToolkitApp {
         match crate::install::install(&det) {
             Ok(rep) => {
                 self.log_str(&format!(
-                    "INSTALADO:\n  HashLoader.exe : {}\n  config         : {}\n  hlmods         : {}\n  bytecode (.hl) : {}",
-                    rep.loader_exe, rep.config, rep.hlmods, rep.main_hl
+                    "INSTALADO:\n  {} : {}\n  config         : {}\n  hlmods         : {}\n  bytecode (.hl) : {}",
+                    crate::util::LOADER_EXE_NAME, rep.loader_exe, rep.config, rep.hlmods, rep.main_hl
                 ));
                 for w in &rep.warnings {
                     self.log_str(&format!("AVISO: {w}"));
                 }
-                let _ = process::Command::new("explorer").arg(&rep.hlmods).spawn();
+                crate::util::open_folder(std::path::Path::new(&rep.hlmods));
             }
             Err(e) => {
                 self.log_str(&format!("ERROR: {e}"));
@@ -326,9 +325,7 @@ impl ToolkitApp {
                     mf.version,
                     mf.main_path().unwrap_or_else(|| "(solo assets)".into()),
                 ));
-                let _ = process::Command::new("explorer")
-                    .arg(format!("/select,\"{}\"", out.display()))
-                    .spawn();
+                crate::util::reveal_file(&out);
             }
             Err(e) => {
                 self.log_str(&format!("ERROR empaquetando: {e}"));
@@ -356,7 +353,7 @@ impl ToolkitApp {
             ui.label(RichText::new(tdir.display().to_string()).weak().size(11.5));
             if ui.small_button(t.btn_open_tools_dir).clicked() {
                 let _ = std::fs::create_dir_all(&tdir);
-                let _ = std::process::Command::new("explorer").arg(&tdir).spawn();
+                crate::util::open_folder(&tdir);
             }
         });
         ui.add_space(8.0);
@@ -468,7 +465,7 @@ impl ToolkitApp {
                     {
                         let tdir = crate::tools::tools_dir();
                         let _ = std::fs::create_dir_all(&tdir);
-                        let _ = std::process::Command::new("explorer").arg(&tdir).spawn();
+                        crate::util::open_folder(&tdir);
                     }
                 });
 
@@ -551,7 +548,7 @@ impl ToolkitApp {
                     rep.out_dir.display()
                 ));
                 crate::dialog::msgbox("Stubs Haxe", &msg);
-                let _ = process::Command::new("explorer").arg(&rep.out_dir).spawn();
+                crate::util::open_folder(&rep.out_dir);
             }
             Err(e) => {
                 self.log_str(&format!("[STUBS ERROR] {e}"));
