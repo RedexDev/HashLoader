@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="app/hashloaderICON.png" alt="HashLoader" width="228" height="228">
+  <img src="app/file_000000001798820e9a505f86688536a0.png" alt="HashLoader banner" width="100%">
 </p>
 
 # HashLoader
 
 A portable mod loader kit for games and applications running on **HashLink** (JIT mode), built as a single Rust executable.
 
-HashLoader can install the loader into a game, package mods as `.hlmod` files, register `.hlmod` files with Windows, and provide modding and reverse-engineering tools. Resource replacement mods using `override/` work even without a compiled code payload.
+HashLoader can install the loader into a game, package mods as `.hlmod` files, register them with Windows, and provide modding and reverse-engineering tools, including resource replacement mods.
 
 ## Documentation
 
