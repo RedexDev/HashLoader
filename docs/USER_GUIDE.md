@@ -23,13 +23,13 @@ If the game does not include a runtime, the toolkit looks for one in this order:
 2. A `hlvm/` folder next to `HashToolkit.exe` (portable mode).
 3. Runtime embedded in the binary from `app/hlvm/` (`hashlink.exe` and `libhl.dll`); the toolkit extracts it to `bin/` for a self-contained installation.
 
-Installation creates this layout:
+Installation places everything directly inside the detected build folder (`bin/` or any build directory name):
 
 ```text
-<root>/HashLoader.exe        Toolkit copy configured as the game's launch executable
-<root>/hashloader.toml       Loader configuration (bin, args, runtime, mods, payload)
-<root>/hlmods/               Installed mods directory + README.txt
-<bin>/.hashloader/           Internal cache: extracted mods + logs + loader.json + hashloader.hdll
+<build>/HashLoader.exe       Toolkit copy configured as the game's launch executable
+<build>/hashloader.toml      Loader configuration (bin, args, runtime, mods, payload)
+<build>/hlmods/              Installed mods directory + README.txt
+<build>/.hashloader/         Internal cache: extracted mods + logs + loader.json + hashloader.hdll
 ```
 
 Launch the game directly via `HashLoader.exe` after installation.

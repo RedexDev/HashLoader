@@ -6,6 +6,7 @@ use std::process::Command;
 use image::imageops;
 
 /// Convierte un PNG en un .ico multi-resolución de Windows (entradas BMP 32bpp clásicas).
+#[cfg(target_os = "windows")]
 fn build_ico(png_path: &Path, out_path: &Path, sizes: &[u32]) -> Result<(), String> {
     let img =
         image::open(png_path).map_err(|e| format!("failed to open {}: {e}", png_path.display()))?;
@@ -86,6 +87,91 @@ fn build_logo(png_path: &Path, out_path: &Path, size: u32) -> Result<(), String>
     Ok(())
 }
 
+fn find_haxe() -> Option<PathBuf> {
+    if Command::new("haxe").arg("--version").output().is_ok() {
+        return Some(PathBuf::from("haxe"));
+    }
+    #[cfg(not(windows))]
+    for cand in ["/opt/haxe/haxe", "/usr/local/bin/haxe", "/usr/bin/haxe"] {
+        let p = Path::new(cand);
+        if p.is_file() {
+            return Some(p.to_path_buf());
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_c_compiler() -> Option<PathBuf> {
+    for cc in ["cc", "gcc", "clang"] {
+        if Command::new(cc).arg("--version").output().is_ok() {
+            return Some(PathBuf::from(cc));
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_hl_sdk_unix() -> (Option<PathBuf>, Option<PathBuf>) {
+    let inc = env::var_os("HASHLINK_INCLUDE")
+        .map(PathBuf::from)
+        .filter(|p| p.join("hl.h").is_file())
+        .or_else(|| {
+            ["/usr/local/include", "/usr/include"]
+                .into_iter()
+                .map(PathBuf::from)
+                .find(|p| p.join("hl.h").is_file())
+        });
+    let lib = env::var_os("HASHLINK_LIB")
+        .map(PathBuf::from)
+        .filter(|p| p.join("libhl.so").is_file())
+        .or_else(|| {
+            [
+                "/usr/local/lib",
+                "/usr/lib",
+                "/usr/lib/x86_64-linux-gnu",
+                "/usr/lib/aarch64-linux-gnu",
+            ]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|p| p.join("libhl.so").is_file())
+        });
+    (inc, lib)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn copy_if_different(src: &Path, dst: &Path, executable: bool) -> bool {
+    let same = match (fs::metadata(src), fs::metadata(dst)) {
+        (Ok(sm), Ok(dm)) if sm.len() == dm.len() => {
+            matches!((fs::read(src), fs::read(dst)), (Ok(sb), Ok(db)) if sb == db)
+        }
+        _ => false,
+    };
+    if !same {
+        if let Some(parent) = dst.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if fs::copy(src, dst).is_err() {
+            return false;
+        }
+    }
+    if executable {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(dst) {
+                let mut perm = meta.permissions();
+                let mode = perm.mode();
+                if mode & 0o111 == 0 {
+                    perm.set_mode(mode | 0o755);
+                    let _ = fs::set_permissions(dst, perm);
+                }
+            }
+        }
+    }
+    true
+}
+
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(has_payload)");
     println!("cargo::rustc-check-cfg=cfg(has_runtime)");
@@ -93,42 +179,133 @@ fn main() {
     println!("cargo:rerun-if-changed=app/LoaderPayload.hx");
     println!("cargo:rerun-if-changed=app/HashLoader.hl");
     println!("cargo:rerun-if-changed=app/native/hashloader.c");
-    println!("cargo:rerun-if-changed=app/native/hashloader.hdll");
-    println!("cargo:rerun-if-changed=app/hlvm/hashlink.exe");
-    println!("cargo:rerun-if-changed=app/hlvm/libhl.dll");
+    println!("cargo:rerun-if-changed=app/hashloaderICON.png");
+    println!("cargo:rerun-if-changed=app/hlmodformatICON.png");
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rerun-if-changed=app/native/hashloader.hdll");
+        println!("cargo:rerun-if-changed=app/hlvm/hashlink.exe");
+        println!("cargo:rerun-if-changed=app/hlvm/libhl.dll");
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        println!("cargo:rerun-if-changed=app/native/linux/hashloader.hdll");
+        println!("cargo:rerun-if-changed=app/hlvm/hashlink");
+        println!("cargo:rerun-if-changed=app/hlvm/libhl.so");
+    }
 
-    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let root = Path::new(&manifest_dir);
-        let payload_hx = root.join("app").join("LoaderPayload.hx");
-        if payload_hx.is_file() {
-            let status = Command::new("haxe")
-                .current_dir(root)
-                .args([
-                    "-cp",
-                    "app",
-                    "-main",
-                    "LoaderPayload",
-                    "-hl",
-                    "app/HashLoader.hl",
-                ])
-                .status();
-            if let Ok(s) = status {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    let out_dir_str = env::var("OUT_DIR").unwrap_or_default();
+    let root = Path::new(&manifest_dir);
+    let out_dir = Path::new(&out_dir_str);
+
+    // 1. Logo PNG multiplataforma (icono de ventana + UI) e icono .hlmod para Linux/Unix
+    let app_dir = root.join("app");
+    let main_icon = app_dir.join("hashloaderICON.png");
+    let mod_icon = app_dir.join("hlmodformatICON.png");
+    if main_icon.exists() {
+        let logo = out_dir.join("logo.png");
+        if let Err(msg) = build_logo(&main_icon, &logo, 128) {
+            println!("cargo:warning=HashLoader logo pipeline: {msg}");
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    if mod_icon.exists() {
+        for (size, name) in [(128, "hlmod_128.png"), (256, "hlmod_256.png")] {
+            if let Err(msg) = build_logo(&mod_icon, &out_dir.join(name), size) {
+                println!("cargo:warning=HashLoader .hlmod icon pipeline ({name}): {msg}");
+            }
+        }
+    }
+
+    // 2. Iconos y recursos PE solo en Windows
+    #[cfg(target_os = "windows")]
+    let icons_result = (|| -> Result<(), String> {
+        if !main_icon.exists() {
+            return Err(format!("missing icon {}", main_icon.display()));
+        }
+        if !mod_icon.exists() {
+            return Err(format!("missing icon {}", mod_icon.display()));
+        }
+
+        let exe_ico = out_dir.join("hashloader.ico");
+        let mod_ico = out_dir.join("hlmod.ico");
+
+        build_ico(&main_icon, &exe_ico, &[16, 24, 32, 48, 64, 128, 256])?;
+        build_ico(&mod_icon, &mod_ico, &[16, 24, 32, 48, 64, 128, 256])?;
+
+        winresource::WindowsResource::new()
+            .set_icon(&exe_ico.to_string_lossy())
+            .set("FileDescription", "HashLoader Mod Loader")
+            .set("ProductName", "HashLoader")
+            .compile()
+            .map_err(|e| format!("winresource: {e}"))?;
+
+        Ok(())
+    })();
+
+    #[cfg(target_os = "windows")]
+    if let Err(msg) = icons_result {
+        println!("cargo:warning=HashLoader icon pipeline: {msg}");
+    }
+
+    // 3. Payload Haxe del Modding Runtime (LoaderPayload.hx -> payload.hl)
+    let payload_dst = out_dir.join("payload.hl");
+    let payload_hx = app_dir.join("LoaderPayload.hx");
+    let payload_app = app_dir.join("HashLoader.hl");
+    let mut payload_ready = false;
+
+    if payload_hx.is_file() {
+        if let Some(haxe_bin) = find_haxe() {
+            #[cfg(target_os = "windows")]
+            let hl_out = payload_app.clone();
+            #[cfg(not(target_os = "windows"))]
+            let hl_out = payload_dst.clone();
+
+            let mut cmd = Command::new(&haxe_bin);
+            cmd.current_dir(root)
+                .args(["-cp", "app", "-main", "LoaderPayload", "-hl"])
+                .arg(&hl_out);
+            #[cfg(not(target_os = "windows"))]
+            if env::var_os("HAXE_STD_PATH").is_none() && Path::new("/opt/haxe/std").is_dir() {
+                cmd.env("HAXE_STD_PATH", "/opt/haxe/std");
+            }
+            if let Ok(s) = cmd.status() {
                 if !s.success() {
                     println!("cargo:warning=haxe fallo al compilar app/LoaderPayload.hx");
+                } else {
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        payload_ready = payload_dst.is_file();
+                    }
                 }
             }
         }
+    }
+    if !payload_ready && payload_app.is_file() {
+        if fs::copy(&payload_app, &payload_dst).is_ok() {
+            payload_ready = true;
+        }
+    }
+    if payload_ready {
+        println!("cargo:rustc-cfg=has_payload");
+        println!("cargo:warning=Payload del Modding Runtime embebido");
+    }
 
-        let native_c = root.join("app").join("native").join("hashloader.c");
-        let native_hdll = root.join("app").join("native").join("hashloader.hdll");
+    // 4. Puente nativo (app/native/hashloader.c -> OUT_DIR/hashloader.hdll)
+    let native_c = app_dir.join("native").join("hashloader.c");
+    let bridge_dst = out_dir.join("hashloader.hdll");
+    let mut bridge_ready = false;
+
+    #[cfg(target_os = "windows")]
+    {
+        let native_hdll = app_dir.join("native").join("hashloader.hdll");
         let cl_exe = Path::new(
             r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\cl.exe",
         );
         let hl_dir = Path::new(r"C:\hashlink-1.16.0-win");
         if native_c.is_file() && cl_exe.is_file() && hl_dir.is_dir() {
-            let obj_out = env::var("OUT_DIR")
-                .map(|d| PathBuf::from(d).join("hashloader.obj"))
-                .unwrap_or_else(|_| root.join("app").join("native").join("hashloader.obj"));
+            let obj_out = out_dir.join("hashloader.obj");
             let status = Command::new(cl_exe)
                 .current_dir(root)
                 .arg("/nologo")
@@ -152,94 +329,68 @@ fn main() {
                 .arg(r"/LIBPATH:C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64")
                 .arg("libhl.lib")
                 .status();
-            let _ = fs::remove_file(root.join("app").join("native").join("hashloader.exp"));
-            let _ = fs::remove_file(root.join("app").join("native").join("hashloader.lib"));
+            let _ = fs::remove_file(app_dir.join("native").join("hashloader.exp"));
+            let _ = fs::remove_file(app_dir.join("native").join("hashloader.lib"));
             if let Ok(s) = status {
                 if !s.success() {
                     println!("cargo:warning=cl.exe fallo al compilar app/native/hashloader.c");
                 }
             }
         }
+        if native_hdll.is_file() && fs::copy(&native_hdll, &bridge_dst).is_ok() {
+            bridge_ready = true;
+            println!("cargo:warning=Puente nativo embebido (app/native/hashloader.hdll)");
+        }
     }
 
-    #[cfg(target_os = "windows")]
-    let icons_result = (|| -> Result<(), String> {
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
-        let app_dir = manifest_dir.join("app");
-        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap_or_default());
-
-        let main_icon = app_dir.join("hashloaderICON.png");
-        let mod_icon = app_dir.join("hlmodformatICON.png");
-        if !main_icon.exists() {
-            return Err(format!("missing icon {}", main_icon.display()));
-        }
-        if !mod_icon.exists() {
-            return Err(format!("missing icon {}", mod_icon.display()));
-        }
-
-        let exe_ico = out_dir.join("hashloader.ico");
-        let mod_ico = out_dir.join("hlmod.ico");
-        let logo = out_dir.join("logo.png");
-
-        build_ico(&main_icon, &exe_ico, &[16, 24, 32, 48, 64, 128, 256])?;
-        build_ico(&mod_icon, &mod_ico, &[16, 24, 32, 48, 64, 128, 256])?;
-        build_logo(&main_icon, &logo, 128)?;
-
-        // Icono del ejecutable + metadatos del producto
-        winresource::WindowsResource::new()
-            .set_icon(&exe_ico.to_string_lossy())
-            .set("FileDescription", "HashLoader Mod Loader")
-            .set("ProductName", "HashLoader")
-            .compile()
-            .map_err(|e| format!("winresource: {e}"))?;
-
-        Ok(())
-    })();
-
-    #[cfg(target_os = "windows")]
-    if let Err(msg) = icons_result {
-        println!("cargo:warning=HashLoader icon pipeline: {msg}");
-    }
-
-    // Payload Haxe del Modding Runtime (opcional): si existe app/HashLoader.hl
-    // se embebe en el toolkit y el `cfg has_payload` activa el runner con mods de código.
-    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let src = Path::new(&manifest_dir).join("app").join("HashLoader.hl");
-        if src.is_file() {
-            if let Ok(out_dir) = env::var("OUT_DIR") {
-                let dst = Path::new(&out_dir).join("payload.hl");
-                if fs::copy(&src, &dst).is_ok() {
-                    println!("cargo:rustc-cfg=has_payload");
-                    println!(
-                        "cargo:warning=Payload del Modding Runtime embebido (app/HashLoader.hl)"
-                    );
+    #[cfg(not(target_os = "windows"))]
+    {
+        let prebuilt = app_dir.join("native").join("linux").join("hashloader.hdll");
+        if native_c.is_file() {
+            let (inc_opt, lib_opt) = find_hl_sdk_unix();
+            if let (Some(cc), Some(inc), Some(lib)) = (find_c_compiler(), inc_opt, lib_opt) {
+                let status = Command::new(&cc)
+                    .current_dir(root)
+                    .args(["-shared", "-fPIC", "-O2", "-Wall", "-Wextra"])
+                    .arg(format!("-I{}", inc.display()))
+                    .arg(&native_c)
+                    .arg("-o")
+                    .arg(&bridge_dst)
+                    .arg(format!("-L{}", lib.display()))
+                    .arg("-Wl,-rpath,$ORIGIN:$ORIGIN/..:.:/usr/local/lib")
+                    .args(["-lhl", "-ldl", "-lpthread"])
+                    .status();
+                match status {
+                    Ok(s) if s.success() && bridge_dst.is_file() => {
+                        bridge_ready = true;
+                        copy_if_different(&bridge_dst, &prebuilt, true);
+                        println!("cargo:warning=Puente nativo compilado y embebido (app/native/linux/hashloader.hdll)");
+                    }
+                    Ok(_) => {
+                        println!("cargo:warning={} fallo al compilar app/native/hashloader.c", cc.display());
+                    }
+                    Err(e) => {
+                        println!("cargo:warning=No se pudo ejecutar {}: {e}", cc.display());
+                    }
                 }
+            }
+        }
+        if !bridge_ready {
+            if prebuilt.is_file() && fs::copy(&prebuilt, &bridge_dst).is_ok() {
+                bridge_ready = true;
+                println!("cargo:warning=Puente nativo precompilado embebido (app/native/linux/hashloader.hdll)");
             }
         }
     }
 
-    // Puente nativo opcional: app/native/hashloader.hdll se embebe y el runner
-    // lo despliega junto al payload para que los mods usen la API de runtime.
-    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let src = Path::new(&manifest_dir)
-            .join("app")
-            .join("native")
-            .join("hashloader.hdll");
-        if src.is_file() {
-            if let Ok(out_dir) = env::var("OUT_DIR") {
-                let dst = Path::new(&out_dir).join("hashloader.hdll");
-                if fs::copy(&src, &dst).is_ok() {
-                    println!("cargo:rustc-cfg=has_bridge");
-                    println!("cargo:warning=Puente nativo embebido (app/native/hashloader.hdll)");
-                }
-            }
-        }
+    if bridge_ready {
+        println!("cargo:rustc-cfg=has_bridge");
     }
 
-    // Runtime JIT opcional embebido: sincroniza desde C:\hashlink-1.16.0-win
-    // hacia app/hlvm/ (hl.exe -> hashlink.exe y libhl.dll) y lo embebe en el ejecutable.
-    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let hlvm = Path::new(&manifest_dir).join("app").join("hlvm");
+    // 5. Runtime JIT opcional embebido (Windows: hashlink.exe + libhl.dll; Linux: hashlink + libhl.so)
+    #[cfg(target_os = "windows")]
+    {
+        let hlvm = app_dir.join("hlvm");
         let _ = fs::create_dir_all(&hlvm);
         let hl_exe = hlvm.join("hashlink.exe");
         let hl_dll = hlvm.join("libhl.dll");
@@ -254,18 +405,52 @@ fn main() {
             let _ = fs::copy(&sys_hl_dll, &hl_dll);
         }
 
-        if hl_exe.is_file() && hl_dll.is_file() {
-            if let Ok(out_dir) = env::var("OUT_DIR") {
-                let out = Path::new(&out_dir);
-                if fs::copy(&hl_exe, out.join("hashlink.exe")).is_ok()
-                    && fs::copy(&hl_dll, out.join("libhl.dll")).is_ok()
-                {
-                    println!("cargo:rustc-cfg=has_runtime");
-                    println!(
-                        "cargo:warning=Runtime JIT embebido (app/hlvm/hashlink.exe + libhl.dll)"
-                    );
-                }
-            }
+        if hl_exe.is_file()
+            && hl_dll.is_file()
+            && fs::copy(&hl_exe, out_dir.join("hashlink.exe")).is_ok()
+            && fs::copy(&hl_dll, out_dir.join("libhl.dll")).is_ok()
+        {
+            println!("cargo:rustc-cfg=has_runtime");
+            println!("cargo:warning=Runtime JIT embebido (app/hlvm/hashlink.exe + libhl.dll)");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let hlvm = app_dir.join("hlvm");
+        let _ = fs::create_dir_all(&hlvm);
+        let hl_bin_dst = hlvm.join("hashlink");
+        let hl_so_dst = hlvm.join("libhl.so");
+
+        let sys_bin = env::var_os("HASHLINK_BIN")
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .or_else(|| {
+                [
+                    "/usr/local/bin/hl",
+                    "/usr/bin/hl",
+                    "/usr/local/bin/hashlink",
+                    "/usr/bin/hashlink",
+                ]
+                .into_iter()
+                .map(PathBuf::from)
+                .find(|p| p.is_file())
+            });
+        if let Some(src_bin) = sys_bin {
+            copy_if_different(&src_bin, &hl_bin_dst, true);
+        }
+
+        if let Some(lib_dir) = find_hl_sdk_unix().1 {
+            copy_if_different(&lib_dir.join("libhl.so"), &hl_so_dst, true);
+        }
+
+        if hl_bin_dst.is_file()
+            && hl_so_dst.is_file()
+            && fs::copy(&hl_bin_dst, out_dir.join("hashlink")).is_ok()
+            && fs::copy(&hl_so_dst, out_dir.join("libhl.so")).is_ok()
+        {
+            println!("cargo:rustc-cfg=has_runtime");
+            println!("cargo:warning=Runtime JIT embebido (app/hlvm/hashlink + libhl.so)");
         }
     }
 }
