@@ -1,7 +1,6 @@
 <p align="center">
   <img src="app/HashLoader.png" alt="HashLoader" width="470" height="470">
 </p>
-
 # HashLoader
 
 A portable mod loader kit for games and applications running on **HashLink** (JIT mode), built as a single Rust executable.
