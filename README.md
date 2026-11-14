@@ -19,11 +19,12 @@ Open or download the guides below:
 HashLoader is designed exclusively for x86_64 systems (Windows / Linux) and is not compatible with ARM64 architectures (such as Apple Silicon M1/M2/M3, Raspberry Pi, or mobile devices).
 
 Why doesn't it work on ARM64?
+
 The primary reason lies in the internal design of the HashLink JIT (HL/JIT) engine:
 
-Architecture-Specific Machine Code Generator (JIT): HashLink's official Just-In-Time compiler translates .hl bytecode directly into native x86 / x86_64 instructions at runtime. HashLink does not have an ARM64 JIT backend (on ARM systems, HashLink requires compiling the project to C code via HL/C instead of using the JIT virtual machine).
+1. Architecture-Specific Machine Code Generator (JIT): HashLink's official Just-In-Time compiler translates .hl bytecode directly into native x86 / x86_64            instructions at runtime. HashLink does not have an ARM64 JIT backend (on ARM systems, HashLink requires compiling the project to C code via HL/C instead of        using the JIT virtual machine).
 
-Bytecode Injection & Low-Level Memory Hooks: Because HashLoader operates by patching .hl bytecode at load time and interacting directly with the JIT runtime environment and native libraries (.hdll), its lifecycle depends on an active JIT-capable VM. Without native ARM64 JIT support in HashLink, there is no dynamic runtime environment into which .hlmod packages can be injected.
+2. Bytecode Injection & Low-Level Memory Hooks: Because HashLoader operates by patching .hl bytecode at load time and interacting directly with the JIT runtime       environment and native libraries (.hdll), its lifecycle depends on an active JIT-capable VM. Without native ARM64 JIT support in HashLink, there is no dynamic     runtime environment into which .hlmod packages can be injected.
 
 Extra Technical Details:
 - Calling Conventions (ABI) & FFI: HashLink native dynamic libraries (.hdll) and dynamically generated JIT function pointers assume x86_64 calling conventions and register alignments (System V AMD64 ABI on Linux / Microsoft x64 on Windows).
