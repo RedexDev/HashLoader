@@ -14,7 +14,7 @@ path = "src/main.rs"
 icon = "app/hashloaderICON.png"
 
 [dependencies]
-eframe = "0.31"
+eframe = "0.37"
 egui = "0.31"
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
