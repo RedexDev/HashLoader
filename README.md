@@ -25,10 +25,10 @@ HashLoader can install the loader into a game, package mods as `.hlmod` files, r
   <img src="app/Screenshot.png" alt="Screenshot " width="450" height="450">
 </p>
 <p align="center">
-  <img src="app/Screenshot (1).png" alt="HashLoader" width="450" height="450">
+  <img src="app/Screenshot (1).png" alt="Screenshot (1)" width="450" height="450">
 </p>
 <p align="center">
-  <img src="app/Screenshot (2).png" alt="HashLoader" width="450" height="450">
+  <img src="app/Screenshot (2).png" alt="Screenshot (2)" width="450" height="450">
 </p>
 
 ## Documentation
