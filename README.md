@@ -14,6 +14,14 @@ HashLoader can install the loader into a game, package mods as `.hlmod` files, r
 - Graphical decompiler and visual bytecode inspector for HashLink (`.hl`).
 - Automated Haxe stub generator (`.hx`) from `.hl` bytecode files.
 
+- Internal loader payload `LoaderPayload` (`app/LoaderPayload.hx`). The compiled artifact remains `app/HashLoader.hl`, keeping full compatibility with the runner and packager.
+- Native bridge `hashloader.c`: readable memory region caching (`VirtualQuery`), accelerated type traversal, and single-pass scoring to prevent frame rate drops.
+- Updated GUI with multi-language selector (English by default, Spanish, Russian, and Portuguese) and clickable link to the author's GitHub profile.
+- Native signature for `Void->Void` callbacks (`_FUN(_VOID, _NO_ARG)`) and functions returning `Bool` (`_BOOL`).
+- Native bridge memory scanning validates each read via `VirtualQuery` (eliminating stale region caches) and suspends background threads during memory traversal, preventing access violations during parallel game initialization.
+- Loop wrapper now survives main-loop re-initializations such as `hxd.App.setup()`, which invokes `setLoop(mainLoop)` again after `init()`.
+- Cross-module type mismatch (`ArrayObj` to `ArrayDyn`) when reading native engine arrays.
+
 ## Documentation
 
 Open or download the guides below:
