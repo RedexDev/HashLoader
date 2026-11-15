@@ -27,7 +27,7 @@ hlbc-decompiler = { path = "crates/hlbc-decompiler" }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
 
 [build-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
