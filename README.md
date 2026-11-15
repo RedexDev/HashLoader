@@ -19,7 +19,7 @@ HashLoader can install the loader into a game, package mods as `.hlmod` files, r
 - Native bridge memory scanning validates each read via `VirtualQuery` (eliminating stale region caches) and suspends background threads during memory traversal, preventing access violations during parallel game initialization.
 - Loop wrapper now survives main-loop re-initializations such as `hxd.App.setup()`, which invokes `setLoop(mainLoop)` again after `init()`.
 - Cross-module type mismatch (`ArrayObj` to `ArrayDyn`) when reading native engine arrays.
-- Example of compatible mods and builds for this loader in the 'example' folder.
+- Example of compatible mods and builds for this loader in the 'examples' folder.
 
 ## Documentation
 
