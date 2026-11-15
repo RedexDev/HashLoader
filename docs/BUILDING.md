@@ -9,12 +9,36 @@ cargo build --release
 
 Requirements (Windows): the stable Rust toolchain with MSVC (Visual Studio's `link.exe`; see `.cargo/config.toml`).
 
-## Build the toolkit (Linux / Debian)
+## Build the toolkit (Linux)
 
 ```bash
 cargo build --release
 # -> target/release/HashToolkit
 ```
+## Packaging as an AppImage on Linux (Optional)
+
+By default, running `cargo build --release` compiles HashLoader into a standard portable Linux **ELF binary** (`target/release/hashloader_toolkit`). While this binary is fully portable, the Linux ELF format does not natively support embedding application icons or desktop metadata inside the executable itself.
+
+If you want to distribute or run HashLoader as a self-contained **AppImage** with an embedded `.png` icon and desktop integration, you can optionally package it directly through Cargo using `cargo-appimage`.
+
+### Raw ELF Binary vs. AppImage
+
+| Feature | Standard ELF (`cargo build --release`) | AppImage (`cargo appimage`) |
+| :--- | :--- | :--- |
+| **Embedded Icon** | No (ELF headers do not store app icons) | **Yes** (embeds `.png` icon & `.desktop` entry) |
+| **Portability** | Single raw executable | Single self-contained SquashFS image |
+| **Desktop Integration** | Terminal-oriented unless manually linked | Recognized by file managers & launchers (Gear Lever, AppImageLauncher) |
+| **Build Dependencies** | Only Rust toolchain (`cargo`) | Requires `cargo-appimage`, `appimagetool`, and `file` |
+
+---
+
+### Prerequisites & Setup (Linux / WSL2)
+
+Before running `cargo appimage`, install the required packaging utilities:
+
+1. **Install `cargo-appimage`:**
+   ```bash
+   cargo install cargo-appimage
 
 Requirements (Linux): `gcc`/`cc`, `haxe` (e.g., `/opt/haxe/haxe` with stdlib in `/opt/haxe/std`), and HashLink 1.16+ installed in `/usr/local` (`/usr/local/include/hl.h`, `/usr/local/lib/libhl.so`, `/usr/local/bin/hl`), plus GUI system libraries for `eframe`/`rfd` (Mesa/OpenGL, X11/Wayland, libxkbcommon, gtk3). You can override the HashLink paths with `HASHLINK_INCLUDE`, `HASHLINK_LIB`, and `HASHLINK_BIN` (or rely on pre-staged binaries in `app/hlvm/` and `app/native/linux/` when HashLink is not installed system-wide).
 
@@ -47,7 +71,7 @@ cargo build --release
 # -> target/release/HashToolkit.exe
 ```
 
-### Linux (Debian)
+### Linux
 
 ```bash
 # 1. Haxe payload -> OUT_DIR/payload.hl (handled automatically by build.rs if Haxe is installed)
