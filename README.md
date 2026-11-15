@@ -56,4 +56,10 @@ Extra Technical Details:
 
 - HL/JIT vs. HL/C: On ARM64 devices (such as consoles, modern macOS, or Android), Haxe/HashLink games are distributed as precompiled static binaries via HL/C, eliminating dynamic .hl file loading and making runtime bytecode injection impossible without recompiling the entire binary.
 
+## Clone the repository
+
+If you want to clone the project locally, install Git first:
+
+- https://git-scm.com/downloads
+
 [License: MIT](LICENSE)
