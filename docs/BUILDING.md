@@ -39,6 +39,22 @@ Before running `cargo appimage`, install the required packaging utilities:
 1. **Install `cargo-appimage`:**
    ```bash
    cargo install cargo-appimage
+   ````
+   ```bash
+   sudo apt update && sudo apt install -y file
+   ```
+   ```bash
+   wget -O /tmp/appimagetool [https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage](https://github.com/AppImage/        appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage)
+   chmod +x /tmp/appimagetool
+   cd /tmp && /tmp/appimagetool --appimage-extract
+   sudo mv /tmp/squashfs-root /opt/appimagetool
+   sudo ln -sf /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+   ````
+   ## Building the AppImage
+   ```bash
+   cargo appimage
+   # -> target/appimage/hashloader_toolkit.AppImage
+   ```
 
 Requirements (Linux): `gcc`/`cc`, `haxe` (e.g., `/opt/haxe/haxe` with stdlib in `/opt/haxe/std`), and HashLink 1.16+ installed in `/usr/local` (`/usr/local/include/hl.h`, `/usr/local/lib/libhl.so`, `/usr/local/bin/hl`), plus GUI system libraries for `eframe`/`rfd` (Mesa/OpenGL, X11/Wayland, libxkbcommon, gtk3). You can override the HashLink paths with `HASHLINK_INCLUDE`, `HASHLINK_LIB`, and `HASHLINK_BIN` (or rely on pre-staged binaries in `app/hlvm/` and `app/native/linux/` when HashLink is not installed system-wide).
 
