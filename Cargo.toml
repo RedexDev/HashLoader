@@ -20,7 +20,7 @@ rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 hlbc = { path = "crates/hlbc" }
 hlbc-decompiler = { path = "crates/hlbc-decompiler" }
