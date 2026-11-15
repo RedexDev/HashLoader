@@ -1,80 +1,46 @@
-# Contribution guidelines
+# Contributing to HashLoader
 
-First off, thank you for considering contributing to {{project-name}}.
+Thanks for your interest in improving HashLoader! Contributions are welcome, but changes are incorporated into the original repository only after they are reviewed and accepted by the maintainer.
 
-If your contribution is not straightforward, please first discuss the change you
-wish to make by creating a new issue before making the change.
+## Before you start
 
-## Reporting issues
+- For a substantial change or a new feature, open an [issue](https://github.com/RedexDev/HashLoader/issues) first to discuss the approach.
+- Before reporting a bug, search existing issues to see whether it has already been reported.
+- Keep each pull request focused on one change where possible.
 
-Before reporting an issue on the
-[issue tracker](https://github.com/{{gh-username}}/{{project-name}}/issues),
-please check that it has not already been reported by searching for some related
-keywords.
+## Submitting a change
 
-## Pull requests
+1. Fork the repository and create a branch for your change.
+2. Make your changes and add or update tests or documentation when appropriate.
+3. Run the relevant checks listed below.
+4. Open a pull request against `RedexDev/HashLoader` and explain what changed, why, and how you tested it. Link any related issue.
 
-Try to do one pull request per change.
+Please do not include unrelated changes. The maintainer will review pull requests and decide whether to merge them.
 
-### Updating the changelog
+## Development setup
 
-Update the changes you have made in
-[CHANGELOG](https://github.com/{{gh-username}}/{{project-name}}/blob/main/CHANGELOG.md)
-file under the **Unreleased** section.
+HashLoader is primarily a Rust project. Install the stable Rust toolchain, clone your fork, and run the test suite:
 
-Add the changes of your pull request to one of the following subsections,
-depending on the types of changes defined by
-[Keep a changelog](https://keepachangelog.com/en/1.0.0/):
-
-- `Added` for new features.
-- `Changed` for changes in existing functionality.
-- `Deprecated` for soon-to-be removed features.
-- `Removed` for now removed features.
-- `Fixed` for any bug fixes.
-- `Security` in case of vulnerabilities.
-
-If the required subsection does not exist yet under **Unreleased**, create it!
-
-## Developing
-
-### Set up
-
-This is no different than other Rust projects.
-
-```shell
-git clone https://github.com/{{gh-username}}/{{project-name}}
-cd {{project-name}}
+```sh
+git clone https://github.com/<your-github-username>/HashLoader.git
+cd HashLoader
 cargo test
 ```
 
-### Useful Commands
-{% if crate_type == "bin" %}
-- Build and run release version:
+For platform-specific build requirements and instructions for rebuilding the Haxe payload or native bridge, see [Building and Development](docs/BUILDING.md).
 
-  ```shell
-  cargo build --release && cargo run --release
-  ```
-{% endif %}
-- Run Clippy:
+## Useful checks
 
-  ```shell
-  cargo clippy --all-targets --all-features --workspace
-  ```
+Run these from the repository root before submitting a pull request:
 
-- Run all tests:
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features
+cargo test --all-features
+```
 
-  ```shell
-  cargo test --all-features --workspace
-  ```
+If your changes affect a particular platform or build artifact, test that path too when possible and mention any limitations in your pull request.
 
-- Check to see if there are code formatting issues
+## Documentation
 
-  ```shell
-  cargo fmt --all -- --check
-  ```
-
-- Format the code in the project
-
-  ```shell
-  cargo fmt --all
-  ```
+Update the relevant documentation when changing user-facing behavior, installation steps, the modding workflow, or build requirements. Include examples or screenshots when they make the change easier to understand.
