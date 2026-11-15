@@ -1,5 +1,7 @@
 # Building and Development
 
+> Required: install Rust before building: https://www.rust-lang.org/tools/install
+
 ## Build the toolkit (Windows)
 
 ```bash
