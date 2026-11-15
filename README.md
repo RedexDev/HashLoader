@@ -6,13 +6,13 @@ A portable mod loader kit for games and applications running on **HashLink** (JI
 
 HashLoader can install the loader into a game, package mods as `.hlmod` files, register them with Windows, and provide modding and reverse-engineering tools, including resource replacement mods.
 
-- Generic native bridge hashloader.hdll embedded into the executable and deployed by the runner into <bin>/.hashloader/ (appended to PATH). Locates the game module (*.hl or hlboot.dat) and exposes its classes to mods.
-- Support for custom .hl filenames and Lime architectures (hlboot.dat + <Game>.exe) used across HaxeFlixel, OpenFL, Lime, Peote, and Heaps games.
-- Runtime Haxe SDK (hashloader.HashLoader) featuring cached class resolution, game context (Main/hxd.App, FlxG, FlxGame, FlxState), scene/window handles, window title control, onBeforeFrame/onFrame callbacks, reflection helpers (staticField, field, call, newInstance, etc.), and safe cross-module array utilities (arrayLength, arrayGet).
-- Payload intercepts the main loop (hxd.System.setLoop, lime.app.Application.window.onRender / FlxGame.onEnterFrame), loads mods on the main thread during the first frame, and stores global game context.
-Mod templates and SDK installable directly through the toolkit interface (tools/sdk/hashloader/, tools/templates/src/hashloader/).
-- Graphical decompiler and visual bytecode inspector for HashLink (.hl).
-- Automated Haxe stub generator (.hx) from .hl bytecode files.
+- Generic native bridge `hashloader.hdll` embedded into the executable and deployed by the runner into `<bin>/.hashloader/` (appended to `PATH`). Locates the game module (`*.hl` or `hlboot.dat`) and exposes its classes to mods.
+- Support for custom `.hl` filenames and Lime architectures (`hlboot.dat` + `<Game>.exe`) used across HaxeFlixel, OpenFL, Lime, Peote, and Heaps games.
+- Runtime Haxe SDK (`hashloader.HashLoader`) featuring cached class resolution, game context (`Main`/`hxd.App`, `FlxG`, `FlxGame`, `FlxState`), scene/window handles, window title control, `onBeforeFrame`/`onFrame` callbacks, reflection helpers (`staticField`, `field`, `call`, `newInstance`, etc.), and safe cross-module array utilities (`arrayLength`, `arrayGet`).
+- Payload intercepts the main loop (`hxd.System.setLoop`, `lime.app.Application.window.onRender` / `FlxGame.onEnterFrame`), loads mods on the main thread during the first frame, and stores global game context.
+- Mod templates and SDK installable directly through the toolkit interface (`tools/sdk/hashloader/`, `tools/templates/src/hashloader/`).
+- Graphical decompiler and visual bytecode inspector for HashLink (`.hl`).
+- Automated Haxe stub generator (`.hx`) from `.hl` bytecode files.
 
 ## Documentation
 
