@@ -21,6 +21,16 @@ HashLoader can install the loader into a game, package mods as `.hlmod` files, r
 - Cross-module type mismatch (`ArrayObj` to `ArrayDyn`) when reading native engine arrays.
 - Example of compatible mods and builds for this loader in the 'examples' folder.
 
+<p align="center">
+  <img src="app/Screenshot.png" alt="Screenshot " width="450" height="450">
+</p>
+<p align="center">
+  <img src="app/Screenshot (1).png" alt="HashLoader" width="450" height="450">
+</p>
+<p align="center">
+  <img src="app/Screenshot (2).png" alt="HashLoader" width="450" height="450">
+</p>
+
 ## Documentation
 
 Open or download the guides below:
