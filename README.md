@@ -4,9 +4,6 @@
 </p>
 A portable mod loader kit for games and applications (HAXE) running on **HashLink** (JIT mode).
 
-
-
-
 HashLoader can install the loader into a game, package mods as `.hlmod` files, register them with Windows, and provide modding and reverse-engineering tools, including resource replacement mods.
 
 - Generic native bridge `hashloader.hdll` embedded into the executable and deployed by the runner into `<bin>/.hashloader/` (appended to `PATH`). Locates the game module (`*.hl` or `hlboot.dat`) and exposes its classes to mods.
